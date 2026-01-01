@@ -1958,3 +1958,117 @@ E (1991) task_wdt: esp_task_wdt_reset(707): task not found
    - ESP32作为WiFi热点
    - 提供HTTP服务器
    - 显示棋盘和AI建议
+
+---
+
+## 13. 2026年1月1日 - 串口输入问题解决与GitHub仓库创建
+
+### 13.1 问题诊断
+
+**问题**：ESP32 Chess AI通过PuTTY连接后无法接收键盘输入
+
+**根本原因分析**：
+1. **Flash大小配置错误**：ESP32-P4实际Flash为16MB，但sdkconfig配置为2MB
+   - 导致bootloader在查找应用程序时计算错误地址
+   - 错误信息：`invalid header:0x6073bc60`
+
+2. **USB-Serial/JTAG配置问题**：
+   - 默认配置中，USB-Serial/JTAG只是secondary控制台
+   - 主控制台是UART0，但UART0的RX引脚未连接到USB
+   - 导致可以输出（USB-Serial/JTAG转发UART0输出）但无法输入
+
+### 13.2 解决方案
+
+**解决方案1：修正Flash大小配置**
+- 修改sdkconfig：`CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`
+- 重新编译bootloader和应用程序
+- 正确的bootloader地址：0x2000（不是0x0）
+
+**解决方案2：启用USB-Serial/JTAG作为主控制台**
+- 修改sdkconfig：
+  ```
+  CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+  # CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG is not set
+  ```
+- 使用stdio的getchar/fgetc接收输入
+
+**解决方案3：解决看门狗超时问题**
+- getchar()会阻塞，导致看门狗超时
+- 最终解决方案：移除stdio_rx_task的看门狗检查
+  ```c
+  // Do NOT add this task to watchdog - getchar() blocks
+  // esp_task_wdt_add(NULL);
+  ```
+
+### 13.3 测试验证
+
+**创建test_input测试程序**：
+- 验证USB-Serial/JTAG输入功能正常
+- 测试结果：成功接收字符'e'并回显
+
+**Chess AI功能验证**：
+- ✓ 系统启动成功
+- ✓ 命令解析正常工作
+- ✓ 可以接收用户输入
+- ✓ 可以执行eval和help命令
+- ✓ 神经网络评估功能正常
+
+### 13.4 优化
+
+**减少日志输出**：
+- 注释掉ESP_LOGI调用，减少屏幕刷新
+- 只保留printf输出关键信息
+
+### 13.5 GitHub仓库创建
+
+**仓库信息**：
+- 所有者：u-lee-xu
+- 仓库名称：Esp32Chess
+- URL：https://github.com/u-lee-xu/Esp32Chess.git
+- 状态：Public
+
+**提交内容**：
+- 完整的ESP32 Chess AI项目代码
+- 训练数据和模型文件
+- 文档和配置文件
+- 测试程序
+
+**提交信息**：
+```
+Initial commit: ESP32-P4 Chess AI with TensorFlow Lite Micro
+
+- Implemented neural network-based chess position evaluation
+- Trained on 500 Lichess games (20,002 positions)
+- Deployed to ESP32-P4 using USB-Serial/JTAG for interaction
+- Supports eval and bestmove commands via serial interface
+- Model: CNN architecture, 639KB pure float32 TFLite model
+```
+
+### 13.6 关键技术要点
+
+**ESP32-P4硬件配置**：
+- 芯片：ESP32-P4 (WT0132P4-A1 module)
+- Flash：16MB（之前误配置为2MB）
+- PSRAM：32MB
+- UART0：IO37 (TX), IO38 (RX)
+- RGB LED：IO51
+- USB接口：USB-Serial/JTAG (FUSB)
+
+**软件配置**：
+- ESP-IDF：v5.5.2
+- RISC-V工具链：esp-14.2.0_20251107
+- 控制台：USB-Serial/JTAG（主控制台）
+- 波特率：115200
+
+**模型信息**：
+- 大小：639KB（纯float32，禁用量化）
+- Tensor Arena：200KB，使用37.6KB (18.4%)
+- 架构：CNN (Conv2D + BatchNormalization + Dense)
+- 参数：158,753
+
+### 13.7 待完成工作
+
+1. **完成GitHub推送**：等待GitHub CLI登录完成后推送代码
+2. **优化日志输出**：减少ESP_LOG调用，只保留关键信息
+3. **测试完整功能**：验证eval和bestmove命令
+4. **文档更新**：更新README.md和QUICKSTART.md
