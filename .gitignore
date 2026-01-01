@@ -1,0 +1,36 @@
+# ESP-IDF build files
+build/
+sdkconfig
+sdkconfig.old
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ESP32 specific
+*.bin
+*.elf
+*.map
+*.hex
+
+# Dependencies
+managed_components/
