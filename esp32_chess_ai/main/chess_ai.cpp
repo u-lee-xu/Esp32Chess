@@ -19,8 +19,7 @@
 #include "tensorflow/lite/micro/system_setup.h"
 #include "chess_model.h"
 
-// Comment out ESP_LOG to reduce output
-// static const char *TAG = "ChessAI";
+static const char *TAG = "ChessAI";
 
 // Use USB-Serial/JTAG stdio for input/output
 #define STDIN_BUF_SIZE (1024)
@@ -29,9 +28,7 @@
 constexpr int kTensorArenaSize = 200 * 1024;  // 200KB for ESP32-P4
 static uint8_t tensor_arena[kTensorArenaSize];
 
-// Command queue
-static QueueHandle_t cmd_queue = NULL;
-#define CMD_QUEUE_SIZE 10
+// Command configuration
 #define MAX_CMD_LEN 256
 
 // Piece encoding
@@ -50,14 +47,12 @@ static float board_input[8][8][12];
 static tflite::MicroInterpreter* interpreter = nullptr;
 
 void init_chess_ai() {
-    // ESP_LOGI(TAG, "Initializing Chess AI...");
-    printf("Initializing Chess AI...\n");
+    ESP_LOGI(TAG, "Initializing Chess AI...");
 
     // Load model
     const tflite::Model* model = tflite::GetModel(chess_model_tflite);
     if (model->version() != TFLITE_SCHEMA_VERSION) {
-        // ESP_LOGE(TAG, "Model version mismatch!");
-        printf("Model version mismatch!\n");
+        ESP_LOGE(TAG, "Model version mismatch!");
         return;
     }
 
@@ -86,10 +81,9 @@ void init_chess_ai() {
         return;
     }
 
-    // ESP_LOGI(TAG, "Chess AI initialized successfully");
-    // ESP_LOGI(TAG, "Tensor arena used: %d / %d bytes",
-    //          interpreter->arena_used_bytes(), kTensorArenaSize);
-    printf("Chess AI initialized successfully\n");
+    ESP_LOGI(TAG, "Chess AI initialized successfully");
+    ESP_LOGI(TAG, "Tensor arena used: %d / %d bytes",
+             interpreter->arena_used_bytes(), kTensorArenaSize);
 }
 
 // Convert FEN string to board input tensor
@@ -162,8 +156,7 @@ const char* get_best_move(const char* fen) {
     // Get base evaluation
     float base_eval = evaluate_position();
 
-    // ESP_LOGI(TAG, "Position evaluation: %.3f", base_eval);
-    printf("Position evaluation: %.3f\n", base_eval);
+    ESP_LOGI(TAG, "Position evaluation: %.3f", base_eval);
 
     // TODO: Implement move generation and evaluation
     // This would require a full chess engine with move validation
@@ -290,16 +283,17 @@ void execute_command(Command cmd) {
 
 // UART receive task
 static void stdio_rx_task(void *pvParameters) {
-    // Do NOT add this task to watchdog - getchar() blocks
-    // esp_task_wdt_add(NULL);
-
+    // Initialize stdin
     char cmd_buffer[MAX_CMD_LEN] = {0};
     int cmd_index = 0;
 
-    // ESP_LOGI(TAG, "Stdio task started, waiting for input...");
+    ESP_LOGI(TAG, "Stdio task started, waiting for input...");
 
     while (1) {
-        // Read one character from stdin (blocking)
+        // Feed watchdog to prevent timeout
+        esp_task_wdt_reset();
+
+        // Check if there's data available (non-blocking)
         int c = getchar();
 
         if (c != EOF) {
@@ -325,6 +319,9 @@ static void stdio_rx_task(void *pvParameters) {
                 printf("%c", c);
                 fflush(stdout);
             }
+        } else {
+            // No data available, yield CPU for 5ms (faster polling)
+            vTaskDelay(pdMS_TO_TICKS(5));
         }
     }
 }
@@ -332,8 +329,9 @@ static void stdio_rx_task(void *pvParameters) {
 // Initialize stdio (USB-Serial/JTAG)
 void init_stdio() {
     // USB-Serial/JTAG is already configured by ESP-IDF
-    // Just need to enable line buffering for stdin
+    // Disable buffering for stdin and stdout
     setvbuf(stdin, NULL, _IONBF, 0);
+    setvbuf(stdout, NULL, _IONBF, 0);
     ESP_LOGI(TAG, "Stdio initialized (USB-Serial/JTAG)");
 }
 
@@ -353,15 +351,29 @@ extern "C" void app_main(void) {
     printf("*      Neural Network Evaluator       *\r\n");
     printf("****************************************\r\n");
     printf("\r\n");
-    printf("Model: chess_ai_model.tflite (170KB)\r\n");
+    printf("Model: chess_ai_model.tflite (639KB)\r\n");
     printf("Input: 8x8x12 board tensor\r\n");
     printf("Output: Position evaluation (-1 to 1)\r\n");
     printf("\r\n");
     printf("Type 'help' for available commands.\r\n");
     printf("\r\n");
 
+    // Initialize task watchdog
+    esp_task_wdt_config_t twdt_config = {
+        .timeout_ms = 5000,
+        .idle_core_mask = 0,  // Don't trigger on idle tasks
+        .trigger_panic = false
+    };
+    esp_task_wdt_init(&twdt_config);
+
     // Create stdio receive task
-    xTaskCreate(stdio_rx_task, "stdio_rx_task", 4096, NULL, 5, NULL);
+    TaskHandle_t stdio_task_handle = NULL;
+    xTaskCreate(stdio_rx_task, "stdio_rx_task", 4096, NULL, 5, &stdio_task_handle);
+
+    // Add task to watchdog
+    if (stdio_task_handle != NULL) {
+        esp_task_wdt_add(stdio_task_handle);
+    }
 
     // Show command prompt
     printf("> ");
