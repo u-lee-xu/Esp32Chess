@@ -2072,3 +2072,123 @@ Initial commit: ESP32-P4 Chess AI with TensorFlow Lite Micro
 2. **优化日志输出**：减少ESP_LOG调用，只保留关键信息
 3. **测试完整功能**：验证eval和bestmove命令
 4. **文档更新**：更新README.md和QUICKSTART.md
+
+---
+
+## 14. 2026年1月1日 - GitHub仓库推送与Stockfish安装准备
+
+### 14.1 GitHub仓库推送
+
+**Git初始化和配置**：
+```bash
+cd C:\Users\Mia\Documents\esp32chess
+git init
+git add .
+git commit -m "Initial commit: ESP32-P4 Chess AI with TensorFlow Lite Micro"
+```
+
+**GitHub CLI登录**：
+- 使用 `gh auth login` 登录
+- 选择GitHub.com作为平台
+- 使用浏览器授权登录
+
+**仓库创建**：
+```bash
+gh repo create Esp32Chess --public --source=. --remote=origin --push
+```
+
+**大文件处理**：
+- 问题：`chess_training_data.json` (248MB) 超过GitHub 100MB限制
+- 解决方案：使用Git LFS (Large File Storage)
+```bash
+git lfs install
+git lfs track "chess_training_data.json"
+git add .gitattributes chess_training_data.json
+git commit -m "Add training data to Git LFS"
+git push
+```
+
+**推送状态**：
+- 源代码已成功推送到 https://github.com/u-lee-xu/Esp32Chess
+- 248MB训练数据文件通过Git LFS上传（上传时间较长，约5-10分钟）
+
+### 14.2 Stockfish安装准备
+
+**Stockfish版本**：
+- 最新版本：sf_17.1
+- 下载地址：https://github.com/official-stockfish/Stockfish/releases/download/sf_17.1/stockfish-windows-x86-64-avx2.zip
+- 文件大小：约50MB
+
+**可用Windows版本**：
+- `stockfish-windows-x86-64-avx2.zip` - 推荐版本（Intel 2013+ / AMD 2015+）
+- `stockfish-windows-x86-64-bmi2.zip` - BMI2指令集优化
+- `stockfish-windows-x86-64-sse41-popcnt.zip` - SSE4.1指令集优化
+- `stockfish-windows-x86-64-vnni256.zip` - VNNI指令集优化
+- `stockfish-windows-x86-64-vnni512.zip` - VNNI512指令集优化
+- `stockfish-windows-x86-64.zip` - 通用版本
+
+**安装步骤**：
+1. 下载 `stockfish-windows-x86-64-avx2.zip`
+2. 解压到 `C:\Users\Mia\Documents\esp32chess\stockfish\`
+3. 验证安装：运行 `stockfish.exe` 并输入 `uci` 命令
+
+**配置参数**（在generate_evaluations.py中）：
+```python
+self.depth = 15  # 评估深度（15-20之间）
+self.max_games = 500  # 处理的游戏数量
+self.max_positions_per_game = 50  # 每局提取的位置数
+```
+
+**预计性能**：
+- 单个位置评估：1-2秒（深度15）
+- 500局 × 50位置 = 25,000个位置
+- 总计时间：约6-12小时
+
+### 14.3 下一步计划
+
+1. **完成Stockfish下载和安装**
+   - 手动下载stockfish-windows-x86-64-avx2.zip
+   - 解压到项目目录
+   - 验证安装
+
+2. **生成带评估值的训练数据**
+   - 运行 `python generate_evaluations.py`
+   - 使用Stockfish评估每个位置
+   - 生成新的JSON文件
+
+3. **重新训练模型**
+   - 修改 `train_model.py` 使用新数据
+   - 用Stockfish评估值重新训练
+   - 提高模型评估准确度
+
+4. **更新ESP32模型**
+   - 转换新模型为TFLite
+   - 生成新的C头文件
+   - 重新编译和烧录
+
+### 14.4 技术要点总结
+
+**Git LFS配置**：
+- 文件：`.gitattributes`
+- 内容：`chess_training_data.json filter=lfs diff=lfs merge=lfs -text`
+- 用途：跟踪大文件，避免超过GitHub限制
+
+**Stockfish评估流程**：
+1. 读取PGN文件
+2. 遍历每个对局的每个位置
+3. 调用Stockfish评估当前位置
+4. 将评估值归一化到-1到1范围
+5. 保存为JSON格式
+
+**评估值归一化**：
+```python
+def normalize_eval(stockfish_eval):
+    # 使用tanh函数将Stockfish评估值映射到-1到1
+    return math.tanh(stockfish_eval / 5.0)
+```
+
+**GitHub仓库信息**：
+- 仓库URL：https://github.com/u-lee-xu/Esp32Chess
+- 主分支：main
+- 远程名称：origin
+- Git LFS：已启用
