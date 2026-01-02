@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 
 class StockfishEvaluator:
-    def __init__(self, stockfish_path="stockfish"):
+    def __init__(self, stockfish_path=r"C:\Users\Mia\Documents\esp32chess\stockfish\stockfish\stockfish-windows-x86-64-avx2.exe"):
         """初始化Stockfish评估器"""
         self.stockfish_path = stockfish_path
         self.process = None
@@ -81,6 +81,8 @@ class StockfishEvaluator:
 
         # 等待结果
         start_time = time.time()
+        eval_score = None
+
         while time.time() - start_time < 60:  # 60秒超时
             try:
                 line = self.process.stdout.readline()
@@ -89,15 +91,15 @@ class StockfishEvaluator:
                     if line.startswith("info") and "score" in line:
                         # 解析评估值
                         eval_score = self.parse_evaluation(line)
-                        if eval_score is not None:
-                            return eval_score
+                        # 不立即返回，继续等待更深的结果
                     elif line.startswith("bestmove"):
                         # 分析完成
                         break
-            except:
-                pass
+            except Exception as e:
+                print(f"[ERROR] Reading Stockfish output: {e}")
+                break
 
-        return None
+        return eval_score
 
     def parse_evaluation(self, info_line):
         """从Stockfish输出中解析评估值"""
@@ -268,8 +270,8 @@ def main():
     process_pgn_file(
         pgn_file,
         output_file,
-        max_games=100,  # 先处理100局测试
-        max_positions_per_game=30  # 每局最多30个位置
+        max_games=500,  # 处理所有500局对局
+        max_positions_per_game=50  # 每局最多50个位置
     )
 
     print("\n" + "=" * 80)

@@ -216,7 +216,7 @@ const int chess_model_tflite_len = {len(model_data)};
 
 def main():
     # 配置
-    data_file = "chess_training_data.json"
+    data_file = "chess_training_data_with_eval.json"
     model_dir = "models"
 
     print("=" * 60)
