@@ -324,6 +324,9 @@ float evaluate_position() {
         return 0.0f;
     }
 
+    // Feed watchdog before inference
+    esp_task_wdt_reset();
+
     // Get input tensor
     TfLiteTensor* input = interpreter->input(0);
     memcpy(input->data.f, board_input, sizeof(board_input));
@@ -334,6 +337,9 @@ float evaluate_position() {
         ESP_LOGE(TAG, "Invoke failed");
         return 0.0f;
     }
+
+    // Feed watchdog after inference
+    esp_task_wdt_reset();
 
     // Get output (evaluation score)
     TfLiteTensor* output = interpreter->output(0);
@@ -949,7 +955,7 @@ const char* get_best_move(const char* fen) {
     int best_move_idx = 0;
 
     for (int i = 0; i < move_count; i++) {
-        // Reset watchdog to prevent timeout
+        // Reset watchdog before processing each move
         esp_task_wdt_reset();
 
         // Save current board state
@@ -964,12 +970,18 @@ const char* get_best_move(const char* fen) {
 
         // Make the move
         if (make_move(&moves[i])) {
+            // Reset watchdog before evaluation
+            esp_task_wdt_reset();
+
             // Evaluate the resulting position
             fen_to_tensor(fen);  // Re-initialize from saved state
             init_board_from_fen(fen);  // This is a workaround - should use saved state
             make_move(&moves[i]);  // Make the move again
 
             float eval = evaluate_position();
+
+            // Reset watchdog after evaluation
+            esp_task_wdt_reset();
 
             // For white, we want to maximize; for black, minimize
             if (is_white_turn) {
@@ -992,6 +1004,9 @@ const char* get_best_move(const char* fen) {
         castling_k = saved_castling_k;
         castling_q = saved_castling_q;
         en_passant_col = saved_en_passant_col;
+
+        // Reset watchdog after restoring state
+        esp_task_wdt_reset();
     }
 
     // Format the best move
@@ -1152,6 +1167,7 @@ static void stdio_rx_task(void *pvParameters) {
                 if (cmd_index > 0) {
                     cmd_buffer[cmd_index] = '\0';
                     printf("\r\n");
+                    fflush(stdout);
                     Command cmd = parse_command(cmd_buffer);
                     execute_command(cmd);
                     cmd_index = 0;
@@ -1166,8 +1182,8 @@ static void stdio_rx_task(void *pvParameters) {
             } else if (cmd_index < MAX_CMD_LEN - 1) {
                 // Regular character
                 cmd_buffer[cmd_index++] = (char)c;
-                printf("%c", c);
-                fflush(stdout);
+                putchar(c);  // Use putchar for immediate output
+                fflush(stdout);  // Force flush
             }
         } else {
             // No data available, yield CPU for 5ms (faster polling)
@@ -1182,6 +1198,10 @@ void init_stdio() {
     // Disable buffering for stdin and stdout
     setvbuf(stdin, NULL, _IONBF, 0);
     setvbuf(stdout, NULL, _IONBF, 0);
+
+    // Ensure line buffering is disabled for immediate output
+    setlinebuf(stdout);
+
     ESP_LOGI(TAG, "Stdio initialized (USB-Serial/JTAG)");
 }
 
@@ -1209,10 +1229,11 @@ extern "C" void app_main(void) {
     printf("\r\n");
 
     // Initialize task watchdog
+    // Use default configuration (5 seconds timeout)
     esp_task_wdt_config_t twdt_config = {
         .timeout_ms = 5000,
         .idle_core_mask = 0,  // Don't trigger on idle tasks
-        .trigger_panic = false
+        .trigger_panic = false  // Don't panic on timeout, just print warning
     };
     esp_task_wdt_init(&twdt_config);
 
