@@ -4,6 +4,27 @@
 
 本项目是一个基于TensorFlow Lite Micro的国际象棋AI，部署到ESP32-P4芯片上，包含神经网络模型、走法生成器和串口命令界面。
 
+---
+
+## ⚠️ 重要提示（请AI助手仔细阅读）
+
+**每次开始工作前，请务必先阅读本文档的"文件保留与更新策略"章节！**
+
+本文件包含了项目所有文件的详细分类和用途说明，以及：
+- 哪些文件需要保留到Git
+- 哪些文件是编译生成的（可以删除）
+- 哪些文件是外部依赖（不建议提交）
+- 文件的更新频率和备份策略
+
+这样可以避免误删除重要文件，或提交不应该提交的文件到Git仓库。
+
+**关键章节参考**：
+- "文件保留与更新策略" - 了解文件分类和管理
+- "文件重要性分级" - 了解哪些是核心文件
+- "维护建议" - 了解如何维护项目
+
+---
+
 ## 目录结构
 
 ```
@@ -680,6 +701,183 @@ esp32chess/
 - 2026-01-01: 更新chess_ai.cpp，添加走法生成器
 - 2026-01-01: 更新PROJECT_LOG.md，记录ESP32部署过程
 - 2025-12-31: 创建STOCKFISH_SETUP.md
+
+---
+
+## 文件保留与更新策略
+
+### 需要保留到Git的文件（源代码和配置）
+
+#### 根目录 - 源代码
+- `parse_pgn.py` - PGN解析脚本
+- `train_model.py` - 模型训练脚本
+- `test_model.py` - 模型测试脚本
+- `generate_evaluations.py` - 评估生成脚本
+- `movegen.py` - 走法生成器（Python版）
+- `test_chess_ai.py` - ESP32测试脚本
+- `test_movegen_simple.py` - 走法生成器测试脚本
+- `analyze_data.py` - 数据分析脚本
+- `chess_training_data.json` - 训练数据（Git LFS）
+- `chess_training_data_with_eval.json` - 训练数据（Git LFS）
+- `lichess_tournament_*.pgn` - PGN对局数据（Git LFS）
+
+#### 根目录 - 模型文件
+- `models/chess_ai_model.keras` - Keras模型（Git LFS）
+- `models/chess_ai_model.tflite` - TFLite模型（Git LFS）
+- `models/best_model.keras` - 最佳模型（Git LFS）
+
+#### 根目录 - 文档
+- `PROJECT_LOG.md` - 项目日志
+- `README_CURRENT_STATUS.md` - 项目状态
+- `FILE_INDEX.md` - 文件索引（本文件）
+- `STOCKFISH_SETUP.md` - Stockfish指南
+- `requirements.txt` - Python依赖
+
+#### ESP32项目 - 源代码
+- `esp32_chess_ai/main/chess_ai.cpp` - 主程序
+- `esp32_chess_ai/main/chess_model.h` - 模型头文件（Git LFS）
+- `esp32_chess_ai/CMakeLists.txt` - 项目CMake配置
+- `esp32_chess_ai/main/CMakeLists.txt` - 组件CMake配置
+- `esp32_chess_ai/sdkconfig.defaults` - 默认配置
+- `esp32_chess_ai/dependencies.lock` - 依赖锁定
+
+#### ESP32项目 - 文档和脚本
+- `esp32_chess_ai/README.md` - 项目说明
+- `esp32_chess_ai/QUICKSTART.md` - 快速开始
+- `esp32_chess_ai/COMMANDS.md` - 命令说明
+- `esp32_chess_ai/PYTHON_DEPENDENCIES.md` - 依赖管理
+- `esp32_chess_ai/*.bat` - 所有编译和烧录脚本
+
+#### 开发板文档
+- `WT9932P4-TINY_*.pdf` - 开发板文档（Git LFS）
+
+---
+
+### 编译生成的文件（可删除/更新）
+
+#### ESP32编译输出
+- `esp32_chess_ai/build/` - 整个编译输出目录
+  - `build/esp32_chess_ai.bin` - 固件二进制
+  - `build/esp32_chess_ai.elf` - ELF文件
+  - `build/bootloader/` - bootloader
+  - `build/partition_table/` - 分区表
+  - `build/*.log` - 编译日志
+
+#### Python缓存
+- `__pycache__/` - Python字节码缓存
+- `*.pyc` - Python字节码文件
+
+#### 其他临时文件
+- `sdkconfig` - 当前配置（可从sdkconfig.defaults重新生成）
+- `build.log` - 编译日志
+
+---
+
+### 外部依赖（需保留但不建议提交到Git）
+
+#### ESP-IDF源码
+- `esp-idf-v5.5.2/` - ESP-IDF完整源码
+  - **建议**: 使用Git子模块或单独管理
+  - **原因**: 文件太大（数百MB）
+  - **替代**: 使用官方ESP-IDF安装
+
+#### Stockfish引擎
+- `stockfish/` - Stockfish源码
+- `stockfish-windows-x86-64-avx2.exe` - Stockfish可执行文件
+- `stockfish.zip` - Stockfish压缩包
+  - **建议**: 保留本地，不提交到Git
+  - **原因**: 可从官网重新下载
+
+#### 开发板资料
+- `WT9932P4-TINY_HDK_V1.1.zip` - 硬件开发包
+- `WT9932P4-TINY_Release_V1.0_20250807.zip` - 发布版本
+  - **建议**: 保留本地，不提交到Git
+  - **原因**: 厂商提供的资料
+
+---
+
+### Git配置建议
+
+#### .gitignore应包含：
+```
+# 编译输出
+esp32_chess_ai/build/
+esp32_chess_ai/sdkconfig
+
+# Python缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 临时文件
+*.log
+*.tmp
+
+# 外部依赖
+esp-idf-v5.5.2/
+stockfish/
+stockfish.zip
+stockfish-windows-x86-64-avx2.zip
+
+# 开发板资料
+WT9932P4-TINY_HDK*.zip
+WT9932P4-TINY_Release*.zip
+```
+
+#### Git LFS应管理：
+- `chess_training_data.json`
+- `chess_training_data_with_eval.json`
+- `lichess_tournament_*.pgn`
+- `models/*.keras`
+- `models/*.tflite`
+- `WT9932P4-TINY_*.pdf`
+- `esp32_chess_ai/main/chess_model.h`
+
+---
+
+### 文件更新频率
+
+#### 经常更新（每次修改）
+- `chess_ai.cpp` - 核心代码
+- `PROJECT_LOG.md` - 开发日志
+- `FILE_INDEX.md` - 文件索引
+- `sdkconfig` - 配置文件
+
+#### 定期更新（功能变更时）
+- `PYTHON_DEPENDENCIES.md` - 依赖管理
+- `README_CURRENT_STATUS.md` - 项目状态
+- `COMMANDS.md` - 命令说明
+- `*.bat` - 编译脚本
+
+#### 很少更新（版本发布时）
+- `CMakeLists.txt` - 构建配置
+- `sdkconfig.defaults` - 默认配置
+- `README.md` - 项目文档
+- `QUICKSTART.md` - 快速开始
+
+#### 基本不更新（稳定后）
+- `models/chess_ai_model.tflite` - TFLite模型
+- `models/chess_model.h` - 模型头文件
+- `WT9932P4-TINY_*.pdf` - 开发板文档
+
+---
+
+### 备份策略
+
+#### 必须备份（不可恢复）
+- `models/chess_ai_model.keras` - Keras模型源文件
+- `chess_training_data.json` - 训练数据
+- `PROJECT_LOG.md` - 完整开发历史
+
+#### 建议备份（可重新生成）
+- `chess_ai.cpp` - 可从Git恢复
+- `*.py` 脚本 - 可从Git恢复
+- `*.md` 文档 - 可从Git恢复
+
+#### 无需备份（可重新编译）
+- `build/` - 编译输出
+- `esp32_chess_ai.bin` - 固件
+- `*.log` - 日志文件
 
 ---
 

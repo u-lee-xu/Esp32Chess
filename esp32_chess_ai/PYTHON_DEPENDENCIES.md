@@ -137,8 +137,48 @@ pip install --only-binary :all: ruamel.yaml
 
 ## Python环境信息
 
+### Python 3.11环境（唯一使用）
+
+#### idf5.5_py3.11_env (Python 3.11.2)
+- **路径**: `C:\Users\Mia\.espressif\python_env\idf5.5_py3.11_env\`
+- **Python版本**: 3.11.2
+- **创建时间**: 2025-12-31
+- **状态**: ✅ 已安装所有依赖
+- **用途**: ESP-IDF官方安装环境（唯一使用）
+- **已安装包**: 
+  - cryptography 44.0.3
+  - esptool 4.11.dev1
+  - pyparsing 3.2.5
+  - esp-idf-diag 0.2.0
+  - esp-idf-kconfig 2.5.0
+  - esp-idf-monitor 1.8.0
+  - esp-idf-size 1.7.1
+  - 以及其他30+个必需包（见上文列表）
+
+### 系统Python
+
+- **路径**: `C:\Users\Mia\AppData\Local\Programs\Python\Python39\`
 - **Python版本**: 3.9.2
-- **虚拟环境路径**: `C:\Users\Mia\.espressif\python_env\idf5.5_py3.9_env\`
+- **用途**: 系统默认Python（不用于ESP-IDF）
+
+### Python 3.9环境（已废弃）
+
+#### idf5.5_py3.9_env (Python 3.9.2)
+- **路径**: `C:\Users\Mia\.espressif\python_env\idf5.5_py3.9_env\`
+- **Python版本**: 3.9.2
+- **状态**: ⚠️ 已废弃，不再使用
+- **原因**: Python 3.11环境已配置完成且更稳定
+- **建议**: 可以删除以节省空间
+
+### 推荐使用环境
+
+**唯一推荐**: `idf5.5_py3.11_env` (Python 3.11.2)
+- 原因: ESP-IDF官方安装，依赖完整，版本更新
+- 使用方法: 在命令中指定完整路径
+- 所有脚本已配置使用此环境
+
+### 配置信息
+
 - **ESP-IDF路径**: `C:\Users\Mia\Documents\esp32chess\esp-idf-v5.5.2`
 - **约束文件**: `C:\Users\Mia\.espressif\espidf.constraints.v5.5.txt`
 
@@ -183,11 +223,18 @@ pip install tree-sitter tree-sitter_c pyclang freertos-gdb
 # 检查Python版本
 python --version
 
-# 检查已安装的包
-pip list | findstr /i "esp-idf esptool cryptography pyparsing"
+# 检查ESP-IDF Python环境版本
+C:\Users\Mia\.espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe --version
+C:\Users\Mia\.espressif\python_env\idf5.5_py3.9_env\Scripts\python.exe --version
+
+# 检查已安装的包（Python 3.11环境）
+C:\Users\Mia\.espressif\python_env\idf5.5_py3.11_env\Scripts\pip.exe list | findstr /i "esp-idf esptool cryptography pyparsing"
+
+# 检查已安装的包（Python 3.9环境）
+C:\Users\Mia\.espressif\python_env\idf5.5_py3.9_env\Scripts\pip.exe list | findstr /i "esp-idf esptool cryptography pyparsing"
 
 # 运行依赖检查
-python %IDF_PATH%\tools\idf_tools.py check-python-dependencies
+C:\Users\Mia\.espressif\python_env\idf5.5_py3.9_env\Scripts\python.exe %IDF_PATH%\tools\idf_tools.py check-python-dependencies
 ```
 
 ## 常见问题
@@ -227,6 +274,7 @@ C:\Users\Mia\.espressif\install.bat esp32p4
 2. **版本锁定**: 在项目中创建 `requirements.txt` 文件，锁定所有依赖版本
 3. **文档更新**: 每次修改依赖后，更新本文档
 4. **备份虚拟环境**: 定期备份 `python_env` 目录
+5. **环境统一**: 所有脚本统一使用Python 3.11环境（idf5.5_py3.11_env）
 
 ## 参考资料
 
@@ -234,6 +282,72 @@ C:\Users\Mia\.espressif\install.bat esp32p4
 - [ESP-IDF Getting Started](https://docs.espressif.com/projects/esp-idf/en/latest/esp32p4/get-started/index.html)
 - [Python Package Index (PyPI)](https://pypi.org/)
 
+## 环境切换和使用
+
+### 使用Python 3.11环境（唯一推荐）
+
+```batch
+REM 编译项目
+set IDF_PATH=C:\Users\Mia\Documents\esp32chess\esp-idf-v5.5.2
+set PYTHON=C:\Users\Mia\.espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe
+set IDF_PYTHON_ENV_PATH=C:\Users\Mia\.espressif\python_env\idf5.5_py3.11_env
+set ESP_ROM_ELF_DIR=C:\Users\Mia\.espressif\tools\esp-rom-elfs\20241011
+%PYTHON% %IDF_PATH%\tools\idf.py build
+
+REM 烧录固件
+%PYTHON% %IDF_PATH%\tools\idf.py -p COM19 flash
+```
+
+### 快速烧录命令
+
+```batch
+REM 使用Python 3.11环境直接烧录
+cd C:\Users\Mia\Documents\esp32chess\esp32_chess_ai
+C:\Users\Mia\.espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Users\Mia\Documents\esp32chess\esp-idf-v5.5.2\tools\idf.py -p COM19 flash
+```
+
+## 环境问题排查
+
+### 问题1: IDF_PYTHON_ENV_PATH缺失
+
+**错误信息**:
+```
+WARNING: The IDF_PYTHON_ENV_PATH is missing in environmental variables!
+```
+
+**解决方案**: 设置IDF_PYTHON_ENV_PATH环境变量
+```batch
+set IDF_PYTHON_ENV_PATH=C:\Users\Mia\.espressif\python_env\idf5.5_py3.11_env
+```
+
+### 问题2: Python版本不匹配
+
+**错误信息**:
+```
+error: subprocess-exited-with-error
+ERROR: Failed to build 'ruamel.yaml.clibz'
+```
+
+**解决方案**: 使用Python 3.11环境（已配置）
+```batch
+C:\Users\Mia\.espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe ...
+```
+
+### 问题3: 依赖包版本冲突
+
+**错误信息**:
+```
+Requirement 'esptool~=4.11.dev1' was not met. Installed version: 4.10.0
+```
+
+**解决方案**: 手动安装指定版本
+```batch
+C:\Users\Mia\.espressif\python_env\idf5.5_py3.11_env\Scripts\pip.exe install esptool==4.11.dev1
+```
+
 ## 更新日志
 
 - 2026-01-02: 初始版本，记录ESP-IDF v5.5.2的所有Python依赖
+- 2026-01-02: 添加Python 3.11和3.9环境说明
+- 2026-01-02: 添加环境切换和使用指南
+- 2026-01-02: 添加环境问题排查章节

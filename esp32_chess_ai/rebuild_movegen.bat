@@ -10,7 +10,7 @@ set PATH=%IDF_PATH%\tools;%PATH%
 set PATH=C:\Users\Mia\.espressif\tools\ninja\1.12.1;%PATH%
 set PATH=C:\Users\Mia\.espressif\tools\cmake\3.23.2\bin;%PATH%
 set PATH=C:\Users\Mia\.espressif\tools\riscv32-esp-elf\esp-14.2.0_20251107\riscv32-esp-elf\bin;%PATH%
-set PATH=C:\Users\Mia\.espressif\python_env\idf5.5_py3.9_env\Scripts;%PATH%
+set PATH=C:\Users\Mia\.espressif\python_env\idf5.5_py3.11_env\Scripts;%PATH%
 
 echo Cleaning build...
 if exist build (

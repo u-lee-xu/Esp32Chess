@@ -347,21 +347,58 @@ int generate_pseudo_legal_moves(Move* moves) {
     int count = 0;
     bool white = is_white_turn;
 
+    // Debug: print board state
+    ESP_LOGI(TAG, "Generating moves for %s", white ? "white" : "black");
+    for (int r = 0; r < 8; r++) {
+        char row_str[9];
+        for (int c = 0; c < 8; c++) {
+            Piece p = board[r][c];
+            char ch = '.';
+            if (p != EMPTY) {
+                switch(p) {
+                    case EMPTY: ch = '.'; break;
+                    case WHITE_PAWN: ch = 'P'; break;
+                    case WHITE_KNIGHT: ch = 'N'; break;
+                    case WHITE_BISHOP: ch = 'B'; break;
+                    case WHITE_ROOK: ch = 'R'; break;
+                    case WHITE_QUEEN: ch = 'Q'; break;
+                    case WHITE_KING: ch = 'K'; break;
+                    case BLACK_PAWN: ch = 'p'; break;
+                    case BLACK_KNIGHT: ch = 'n'; break;
+                    case BLACK_BISHOP: ch = 'b'; break;
+                    case BLACK_ROOK: ch = 'r'; break;
+                    case BLACK_QUEEN: ch = 'q'; break;
+                    case BLACK_KING: ch = 'k'; break;
+                }
+            }
+            row_str[c] = ch;
+        }
+        row_str[8] = '\0';
+        ESP_LOGI(TAG, "Row %d: %s", r+1, row_str);
+    }
+
     for (int row = 0; row < 8; row++) {
         for (int col = 0; col < 8; col++) {
             Piece piece = board[row][col];
 
             // Skip empty squares and opponent pieces
             if (piece == EMPTY) continue;
-            if (white && piece > WHITE_KING) continue;
-            if (!white && piece <= WHITE_KING) continue;
+            if (white && piece > WHITE_KING) {
+                ESP_LOGI(TAG, "Skipping black piece at %c%d: piece=%d", 'a'+col, row+1, piece);
+                continue;
+            }
+            if (!white && piece <= WHITE_KING) {
+                ESP_LOGI(TAG, "Skipping white piece at %c%d: piece=%d", 'a'+col, row+1, piece);
+                continue;
+            }
+            ESP_LOGI(TAG, "Processing %s piece at %c%d: piece=%d", white ? "white" : "black", 'a'+col, row+1, piece);
 
             // Generate moves based on piece type
             switch (piece) {
                 case WHITE_PAWN:
                 case BLACK_PAWN: {
-                    int dir = white ? -1 : 1;
-                    int start_row = white ? 6 : 1;
+                    int dir = white ? 1 : -1;
+                    int start_row = white ? 1 : 6;
 
                     // Forward move
                     if (row + dir >= 0 && row + dir < 8 && board[row + dir][col] == EMPTY) {
@@ -912,6 +949,9 @@ const char* get_best_move(const char* fen) {
     int best_move_idx = 0;
 
     for (int i = 0; i < move_count; i++) {
+        // Reset watchdog to prevent timeout
+        esp_task_wdt_reset();
+
         // Save current board state
         Piece saved_board[8][8];
         memcpy(saved_board, board, sizeof(board));
@@ -936,7 +976,7 @@ const char* get_best_move(const char* fen) {
                 eval = -eval;  // After making a move, it's black's turn
             }
 
-            ESP_LOGI(TAG, "Move %s: eval=%.3f", moves[i].to_sq, eval);
+            ESP_LOGI(TAG, "Move %s%s: eval=%.3f", moves[i].from_sq, moves[i].to_sq, eval);
 
             if (eval > best_eval) {
                 best_eval = eval;
@@ -1178,7 +1218,7 @@ extern "C" void app_main(void) {
 
     // Create stdio receive task
     TaskHandle_t stdio_task_handle = NULL;
-    xTaskCreate(stdio_rx_task, "stdio_rx_task", 4096, NULL, 5, &stdio_task_handle);
+    xTaskCreate(stdio_rx_task, "stdio_rx_task", 32768, NULL, 5, &stdio_task_handle);
 
     // Add task to watchdog
     if (stdio_task_handle != NULL) {
