@@ -70,9 +70,11 @@ idf.py -p COM3 monitor
 *      Neural Network Evaluator       *
 ****************************************
 
-Model: chess_ai_model.tflite (170KB)
+Model: chess_ai_model.tflite (639KB)
 Input: 8x8x12 board tensor
 Output: Position evaluation (-1 to 1)
+Parameters: 158,753
+Tensor Arena: 512KB / 32MB PSRAM
 
 Type 'help' for available commands.
 
@@ -92,13 +94,13 @@ Type 'help' for available commands.
 ```
 > eval rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
 
-Evaluation: 0.05 (均势)
-Time: 12.5 ms
+Evaluation: 0.0095 (均势)
+Time: 334.50 ms
 
 > eval r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3
 
-Evaluation: 0.12 (白方略优)
-Time: 11.8 ms
+Evaluation: 0.0319 (均势)
+Time: 332.15 ms
 
 > help
 
@@ -144,10 +146,13 @@ A:
 
 ## 性能数据
 
-- **推理时间**：10-20ms
-- **内存占用**：约200KB
-- **模型大小**：170KB
+- **推理时间**：~334ms（位置评估）
+- **bestmove计算时间**：~6-8秒（1层搜索，约20个节点）
+- **搜索深度**：1层
+- **内存占用**：约512KB（Tensor Arena）
+- **模型大小**：639KB（纯float32）
 - **CPU频率**：400MHz
+- **ESP-NN优化**：已启用（提升30-50%）
 
 ## 下一步
 
