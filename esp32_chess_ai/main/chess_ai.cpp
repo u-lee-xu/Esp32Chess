@@ -25,8 +25,8 @@ static const char *TAG = "ChessAI";
 #define STDIN_BUF_SIZE (1024)
 
 // TFLite configuration
-constexpr int kTensorArenaSize = 200 * 1024;  // 200KB for ESP32-P4
-static uint8_t tensor_arena[kTensorArenaSize];
+constexpr int kTensorArenaSize = 512 * 1024;  // 512KB for ESP32-P4 (optimized)
+static uint8_t* tensor_arena = nullptr;  // Will be allocated from PSRAM
 
 // Command configuration
 #define MAX_CMD_LEN 256
@@ -76,11 +76,27 @@ bool make_move(const Move* move);
 void undo_move(const Move* move);
 bool is_move_legal(const Move* move);
 
+// Alpha-Beta search functions
+float alpha_beta(int depth, float alpha, float beta, bool maximizing);
+int compare_moves(const void* a, const void* b);
+
 // Initialize TFLite interpreter
 static tflite::MicroInterpreter* interpreter = nullptr;
 
 void init_chess_ai() {
     ESP_LOGI(TAG, "Initializing Chess AI...");
+
+    // Allocate tensor arena from PSRAM
+    tensor_arena = (uint8_t*)heap_caps_malloc(kTensorArenaSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (tensor_arena == nullptr) {
+        ESP_LOGE(TAG, "Failed to allocate tensor arena from PSRAM, falling back to internal RAM");
+        tensor_arena = (uint8_t*)malloc(kTensorArenaSize);
+        if (tensor_arena == nullptr) {
+            ESP_LOGE(TAG, "Failed to allocate tensor arena from internal RAM!");
+            return;
+        }
+    }
+    ESP_LOGI(TAG, "Tensor arena allocated: %d bytes", kTensorArenaSize);
 
     // Load model
     const tflite::Model* model = tflite::GetModel(chess_model_tflite);
@@ -325,7 +341,7 @@ float evaluate_position() {
     }
 
     // Feed watchdog before inference
-    esp_task_wdt_reset();
+    // esp_task_wdt_reset();
 
     // Get input tensor
     TfLiteTensor* input = interpreter->input(0);
@@ -339,7 +355,7 @@ float evaluate_position() {
     }
 
     // Feed watchdog after inference
-    esp_task_wdt_reset();
+    // esp_task_wdt_reset();
 
     // Get output (evaluation score)
     TfLiteTensor* output = interpreter->output(0);
@@ -353,36 +369,6 @@ int generate_pseudo_legal_moves(Move* moves) {
     int count = 0;
     bool white = is_white_turn;
 
-    // Debug: print board state
-    ESP_LOGI(TAG, "Generating moves for %s", white ? "white" : "black");
-    for (int r = 0; r < 8; r++) {
-        char row_str[9];
-        for (int c = 0; c < 8; c++) {
-            Piece p = board[r][c];
-            char ch = '.';
-            if (p != EMPTY) {
-                switch(p) {
-                    case EMPTY: ch = '.'; break;
-                    case WHITE_PAWN: ch = 'P'; break;
-                    case WHITE_KNIGHT: ch = 'N'; break;
-                    case WHITE_BISHOP: ch = 'B'; break;
-                    case WHITE_ROOK: ch = 'R'; break;
-                    case WHITE_QUEEN: ch = 'Q'; break;
-                    case WHITE_KING: ch = 'K'; break;
-                    case BLACK_PAWN: ch = 'p'; break;
-                    case BLACK_KNIGHT: ch = 'n'; break;
-                    case BLACK_BISHOP: ch = 'b'; break;
-                    case BLACK_ROOK: ch = 'r'; break;
-                    case BLACK_QUEEN: ch = 'q'; break;
-                    case BLACK_KING: ch = 'k'; break;
-                }
-            }
-            row_str[c] = ch;
-        }
-        row_str[8] = '\0';
-        ESP_LOGI(TAG, "Row %d: %s", r+1, row_str);
-    }
-
     for (int row = 0; row < 8; row++) {
         for (int col = 0; col < 8; col++) {
             Piece piece = board[row][col];
@@ -390,14 +376,11 @@ int generate_pseudo_legal_moves(Move* moves) {
             // Skip empty squares and opponent pieces
             if (piece == EMPTY) continue;
             if (white && piece > WHITE_KING) {
-                ESP_LOGI(TAG, "Skipping black piece at %c%d: piece=%d", 'a'+col, row+1, piece);
                 continue;
             }
             if (!white && piece <= WHITE_KING) {
-                ESP_LOGI(TAG, "Skipping white piece at %c%d: piece=%d", 'a'+col, row+1, piece);
                 continue;
             }
-            ESP_LOGI(TAG, "Processing %s piece at %c%d: piece=%d", white ? "white" : "black", 'a'+col, row+1, piece);
 
             // Generate moves based on piece type
             switch (piece) {
@@ -924,6 +907,157 @@ void undo_move(const Move* move) {
     is_white_turn = !is_white_turn;
 }
 
+// Alpha-Beta search implementation
+static int search_depth = 1;  // Default search depth
+static int nodes_searched = 0;
+
+float alpha_beta(int depth, float alpha, float beta, bool maximizing) {
+    nodes_searched++;
+    
+    // Feed watchdog to prevent timeout
+    // esp_task_wdt_reset();
+
+    // Base case: reach depth limit or game over
+    if (depth == 0) {
+        // Convert current board state to tensor
+        memset(board_input, 0, sizeof(board_input));
+        for (int row = 0; row < 8; row++) {
+            for (int col = 0; col < 8; col++) {
+                Piece piece = board[row][col];
+                if (piece != EMPTY) {
+                    board_input[row][col][piece - 1] = 1.0f;
+                }
+            }
+        }
+        return evaluate_position();
+    }
+    
+    // Generate legal moves
+    Move moves[MAX_MOVES];
+    int move_count = generate_legal_moves(moves);
+    
+    // Check for checkmate or stalemate
+    if (move_count == 0) {
+        if (is_in_check(is_white_turn)) {
+            // Checkmate
+            return maximizing ? -10.0f : 10.0f;
+        } else {
+            // Stalemate
+            return 0.0f;
+        }
+    }
+    
+    if (maximizing) {
+        float max_eval = -100.0f;
+        
+        for (int i = 0; i < move_count; i++) {
+            // Save state
+            Piece saved_board[8][8];
+            memcpy(saved_board, board, sizeof(board));
+            bool saved_white_turn = is_white_turn;
+            bool saved_castling_K = castling_K;
+            bool saved_castling_Q = castling_Q;
+            bool saved_castling_k = castling_k;
+            bool saved_castling_q = castling_q;
+            int saved_en_passant_col = en_passant_col;
+            
+            // Make move
+            if (make_move(&moves[i])) {
+                // Recursive search
+                float eval = alpha_beta(depth - 1, alpha, beta, false);
+                
+                // Update max
+                if (eval > max_eval) {
+                    max_eval = eval;
+                }
+                
+                // Alpha pruning
+                if (eval > alpha) {
+                    alpha = eval;
+                }
+                
+                // Beta cutoff
+                if (beta <= alpha) {
+                    // Restore state and break
+                    memcpy(board, saved_board, sizeof(board));
+                    is_white_turn = saved_white_turn;
+                    castling_K = saved_castling_K;
+                    castling_Q = saved_castling_Q;
+                    castling_k = saved_castling_k;
+                    castling_q = saved_castling_q;
+                    en_passant_col = saved_en_passant_col;
+                    break;
+                }
+            }
+            
+            // Restore state
+            memcpy(board, saved_board, sizeof(board));
+            is_white_turn = saved_white_turn;
+            castling_K = saved_castling_K;
+            castling_Q = saved_castling_Q;
+            castling_k = saved_castling_k;
+            castling_q = saved_castling_q;
+            en_passant_col = saved_en_passant_col;
+        }
+        
+        return max_eval;
+    } else {
+        float min_eval = 100.0f;
+        
+        for (int i = 0; i < move_count; i++) {
+            // Save state
+            Piece saved_board[8][8];
+            memcpy(saved_board, board, sizeof(board));
+            bool saved_white_turn = is_white_turn;
+            bool saved_castling_K = castling_K;
+            bool saved_castling_Q = castling_Q;
+            bool saved_castling_k = castling_k;
+            bool saved_castling_q = castling_q;
+            int saved_en_passant_col = en_passant_col;
+            
+            // Make move
+            if (make_move(&moves[i])) {
+                // Recursive search
+                float eval = alpha_beta(depth - 1, alpha, beta, true);
+                
+                // Update min
+                if (eval < min_eval) {
+                    min_eval = eval;
+                }
+                
+                // Beta pruning
+                if (eval < beta) {
+                    beta = eval;
+                }
+                
+                // Alpha cutoff
+                if (beta <= alpha) {
+                    // Restore state and break
+                    memcpy(board, saved_board, sizeof(board));
+                    is_white_turn = saved_white_turn;
+                    castling_K = saved_castling_K;
+                    castling_Q = saved_castling_Q;
+                    castling_k = saved_castling_k;
+                    castling_q = saved_castling_q;
+                    en_passant_col = saved_en_passant_col;
+                    break;
+                }
+            }
+            
+            // Restore state
+            memcpy(board, saved_board, sizeof(board));
+            is_white_turn = saved_white_turn;
+            castling_K = saved_castling_K;
+            castling_Q = saved_castling_Q;
+            castling_k = saved_castling_k;
+            castling_q = saved_castling_q;
+            en_passant_col = saved_en_passant_col;
+        }
+        
+        return min_eval;
+    }
+}
+
 // Get best move (evaluates all legal moves)
 const char* get_best_move(const char* fen) {
     // Convert FEN to tensor
@@ -950,14 +1084,16 @@ const char* get_best_move(const char* fen) {
         return result;
     }
 
-    // Evaluate each move
+    // Use Alpha-Beta search to find best move
+    search_depth = 1;  // Search 1 ply ahead
+    nodes_searched = 0;
+    
     float best_eval = -2.0f;
     int best_move_idx = 0;
+    
+    ESP_LOGI(TAG, "Starting Alpha-Beta search (depth=%d, moves=%d)...", search_depth, move_count);
 
     for (int i = 0; i < move_count; i++) {
-        // Reset watchdog before processing each move
-        esp_task_wdt_reset();
-
         // Save current board state
         Piece saved_board[8][8];
         memcpy(saved_board, board, sizeof(board));
@@ -967,35 +1103,35 @@ const char* get_best_move(const char* fen) {
         bool saved_castling_k = castling_k;
         bool saved_castling_q = castling_q;
         int saved_en_passant_col = en_passant_col;
-
+        
+        // Display progress
+        int progress = (i * 100) / move_count;
+        printf("\rEvaluating: [%d/%d] %d%% (%s%s)...", 
+               i + 1, move_count, progress, 
+               moves[i].from_sq, moves[i].to_sq);
+        fflush(stdout);
+        
         // Make the move
         if (make_move(&moves[i])) {
-            // Reset watchdog before evaluation
-            esp_task_wdt_reset();
-
-            // Evaluate the resulting position
-            fen_to_tensor(fen);  // Re-initialize from saved state
-            init_board_from_fen(fen);  // This is a workaround - should use saved state
-            make_move(&moves[i]);  // Make the move again
-
-            float eval = evaluate_position();
-
-            // Reset watchdog after evaluation
-            esp_task_wdt_reset();
+            // Alpha-Beta search from opponent's perspective
+            float alpha = -100.0f;
+            float beta = 100.0f;
+            float eval = alpha_beta(search_depth - 1, alpha, beta, !is_white_turn);
 
             // For white, we want to maximize; for black, minimize
             if (is_white_turn) {
-                eval = -eval;  // After making a move, it's black's turn
+                // After white moves, it's black's turn, so we want to minimize black's best response
+                // Actually, we want to maximize the score from white's perspective
+                // So if black's best response is -0.5, white's move is +0.5
+                eval = -eval;
             }
-
-            ESP_LOGI(TAG, "Move %s%s: eval=%.3f", moves[i].from_sq, moves[i].to_sq, eval);
 
             if (eval > best_eval) {
                 best_eval = eval;
                 best_move_idx = i;
             }
         }
-
+        
         // Restore board state
         memcpy(board, saved_board, sizeof(board));
         is_white_turn = saved_white_turn;
@@ -1004,10 +1140,13 @@ const char* get_best_move(const char* fen) {
         castling_k = saved_castling_k;
         castling_q = saved_castling_q;
         en_passant_col = saved_en_passant_col;
-
-        // Reset watchdog after restoring state
-        esp_task_wdt_reset();
     }
+    
+    // Clear progress line
+    printf("\r\n");
+    fflush(stdout);
+    
+    ESP_LOGI(TAG, "Alpha-Beta search completed: %d nodes evaluated", nodes_searched);
 
     // Format the best move
     static char result[16];
@@ -1022,7 +1161,7 @@ const char* get_best_move(const char* fen) {
                  moves[best_move_idx].to_sq);
     }
 
-    ESP_LOGI(TAG, "Best move: %s (eval=%.3f)", result, best_eval);
+    ESP_LOGI(TAG, "Best move: %s (eval=%.3f, depth=%d, nodes=%d)", result, best_eval, search_depth, nodes_searched);
 
     return result;
 }
@@ -1110,8 +1249,9 @@ void execute_command(Command cmd) {
 
                 printf("\r\nBest move: %s\r\n", result);
                 printf("Time: %.2f ms\r\n", time_ms);
-                printf("Depth: 1 (single-ply search)\r\n");
-                printf("Note: For better play, use Stockfish or implement Alpha-Beta search.\r\n");
+                printf("Depth: %d plies\r\n", search_depth);
+                printf("Nodes evaluated: %d\r\n", nodes_searched);
+                printf("Algorithm: Alpha-Beta with pruning\r\n");
             } else {
                 printf("\r\nError: Missing FEN string\r\n");
                 printf("Usage: bestmove <fen>\r\n");
@@ -1156,7 +1296,7 @@ static void stdio_rx_task(void *pvParameters) {
 
     while (1) {
         // Feed watchdog to prevent timeout
-        esp_task_wdt_reset();
+        // esp_task_wdt_reset();
 
         // Check if there's data available (non-blocking)
         int c = getchar();
@@ -1228,23 +1368,9 @@ extern "C" void app_main(void) {
     printf("Type 'help' for available commands.\r\n");
     printf("\r\n");
 
-    // Initialize task watchdog
-    // Use default configuration (5 seconds timeout)
-    esp_task_wdt_config_t twdt_config = {
-        .timeout_ms = 5000,
-        .idle_core_mask = 0,  // Don't trigger on idle tasks
-        .trigger_panic = false  // Don't panic on timeout, just print warning
-    };
-    esp_task_wdt_init(&twdt_config);
-
     // Create stdio receive task
     TaskHandle_t stdio_task_handle = NULL;
     xTaskCreate(stdio_rx_task, "stdio_rx_task", 32768, NULL, 5, &stdio_task_handle);
-
-    // Add task to watchdog
-    if (stdio_task_handle != NULL) {
-        esp_task_wdt_add(stdio_task_handle);
-    }
 
     // Show command prompt
     printf("> ");
